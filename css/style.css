@@ -12,6 +12,15 @@
     --azul: #3b82f6;
 }
 
+iframe[src*="netlify"],
+#nl-badge-frame,
+[id*="netlify-badge"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .ui-icon {
     width: 16px;
     height: 16px;

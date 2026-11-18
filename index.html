@@ -1,0 +1,1176 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Gabriel Gatti – Sistema de Vendas</title>
+
+    <link rel="icon" href="img/icon.jpeg" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0a1a0c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Gatti Adubo" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link href="css/style.css" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+/* MODO DEMONSTRAÇÃO — dados mantidos apenas na memória desta aba.
+   Não utiliza Firebase, Firestore, autenticação, API ou banco de dados. */
+(() => {
+  const hoje = new Date();
+  const iso = d => d.toISOString().slice(0,10);
+  const data = iso(hoje);
+  const id = () => 'demo-' + Math.random().toString(36).slice(2,10);
+  const item = (prodId,nome,icon,qtd,unit) => ({prodId,nome,icon,qtd,unit,subtotal:+(qtd*unit).toFixed(2)});
+  window._db = {};
+  window._auth = { currentUser: { email:'demo@davitech.com.br', uid:'demo-user' } };
+  window._usuarioNome = 'Demonstração';
+  window._usuarioAdmin = true;
+  window._usuarioEmail = 'demo@davitech.com.br';
+  window._resolverVendedor = v => v.responsavel || v.vendedor || 'Demonstração';
+  window._metas = { valor: 5000, unidades: 150 };
+  window._metasCarregadas = true;
+  window._metasExistem = true;
+  window._produtosCarregados = true;
+  window._produtos = [
+    {id:'dT1',icon:'sprout',nome:'1kg Turbinado Direto',preco:9,estoque:85,estoqueMinimo:15},
+    {id:'dT4',icon:'leaf',nome:'4kg Turbinado Direto',preco:25,estoque:42,estoqueMinimo:10},
+    {id:'cT1',icon:'sprout',nome:'1kg Turbinado Consignado',preco:12,estoque:60,estoqueMinimo:12},
+    {id:'cT4',icon:'leaf',nome:'4kg Turbinado Consignado',preco:20,estoque:28,estoqueMinimo:8},
+    {id:'dF1',icon:'citrus',nome:'1kg Frutífero Direto',preco:12,estoque:54,estoqueMinimo:10},
+    {id:'dF4',icon:'tree-pine',nome:'4kg Frutífero Direto',preco:35,estoque:31,estoqueMinimo:8},
+    {id:'cF1',icon:'citrus',nome:'1kg Frutífero Consignado',preco:15,estoque:36,estoqueMinimo:8},
+    {id:'cF4',icon:'tree-pine',nome:'4kg Frutífero Consignado',preco:40,estoque:22,estoqueMinimo:6},
+    {id:'p50',icon:'package',nome:'50kg Granel',preco:270,estoque:12,estoqueMinimo:3},
+    {id:'p100',icon:'factory',nome:'100kg Granel',preco:400,estoque:7,estoqueMinimo:2}
+  ];
+  const d = n => { const x=new Date(hoje); x.setDate(x.getDate()-n); return iso(x); };
+  window._vendas = [
+    {_id:'demo-venda-01',data,cliente:'Fazenda Boa Esperança',telefone:'65999990001',responsavel:'Demonstração',vendedor:'Demonstração',pagamento:'PIX',status:'Confirmada',total:350,itens:[item('dT4','4kg Turbinado Direto','leaf',2,25),item('dF4','4kg Frutífero Direto','tree-pine',8,35)]},
+    {_id:'demo-venda-02',data:d(1),cliente:'João da Silva',telefone:'65999990002',responsavel:'Demonstração',pagamento:'Dinheiro',status:'Confirmada',total:135,itens:[item('dT1','1kg Turbinado Direto','sprout',5,9),item('dF1','1kg Frutífero Direto','citrus',7,12)]},
+    {_id:'demo-venda-03',data:d(3),cliente:'Sítio Primavera',telefone:'65999990003',responsavel:'Demonstração',pagamento:'PIX',status:'Confirmada',total:540,itens:[item('p50','50kg Granel','package',2,270)]},
+    {_id:'demo-venda-04',data:d(5),cliente:'Maria Oliveira',telefone:'65999990004',responsavel:'Demonstração',pagamento:'Cartão',status:'Confirmada',total:100,itens:[item('dT4','4kg Turbinado Direto','leaf',4,25)]},
+    {_id:'demo-venda-05',data:d(9),cliente:'Agropecuária Central',telefone:'65999990005',responsavel:'Demonstração',pagamento:'A prazo',status:'Confirmada',total:800,itens:[item('p100','100kg Granel','factory',2,400)]}
+  ];
+  window._gastos = [
+    {_id:'demo-gasto-01',nome:'Combustível',qtd:1,valor:180,data:d(2)},
+    {_id:'demo-gasto-02',nome:'Embalagens',qtd:2,valor:45,data:d(4)},
+    {_id:'demo-gasto-03',nome:'Frete',qtd:1,valor:120,data:d(7)}
+  ];
+  window._movs = [];
+  const collections = {vendas:window._vendas,gastos:window._gastos,produtos:window._produtos,movimentacoes:window._movs};
+  const ref = (col,id) => ({_demoRef:true,col,id:id||null});
+  const resolve = r => r && r._demoRef ? r : null;
+  const clone = x => JSON.parse(JSON.stringify(x));
+  const apply = (old, patch) => {
+    const out={...(old||{})};
+    Object.entries(patch||{}).forEach(([k,v]) => out[k] = v && v._increment !== undefined ? (Number(out[k])||0)+v._increment : v);
+    return out;
+  };
+  const api = {
+    collection:(db,name)=>ref(name),
+    doc:(a,b,c)=> {
+      if (a && a._demoRef) return ref(a.col, b || id());
+      return ref(b, c || id());
+    },
+    serverTimestamp:()=>new Date().toISOString(),
+    increment:n=>({_increment:n}),
+    addDoc:async (r,data)=>{const x=ref(r.col,id()); await api.setDoc(x,data); return x;},
+    updateDoc:async (r,data)=>{const x=resolve(r); if(!x) throw Error('Referência inválida'); const arr=collections[x.col]||[]; const i=arr.findIndex(v=>(v._id||v.id)===x.id); if(i<0) throw Error('Registro não encontrado'); arr[i]=apply(arr[i],data);},
+    setDoc:async (r,data)=>{const x=resolve(r); if(!x) throw Error('Referência inválida'); const arr=collections[x.col]||(collections[x.col]=[]); const i=arr.findIndex(v=>(v._id||v.id)===x.id); const value={...clone(data),...(x.col==='vendas'?{_id:x.id}:{}),...(x.col==='produtos'?{id:x.id}:{})}; if(i<0) arr.push(value); else arr[i]={...arr[i],...value}; if(x.col==='config' && x.id==='metas') window._metas={valor:Number(data.valor)||0,unidades:Number(data.unidades)||0};},
+    deleteDoc:async r=>{const x=resolve(r); if(!x) return; const arr=collections[x.col]||[]; const i=arr.findIndex(v=>(v._id||v.id)===x.id); if(i>=0) arr.splice(i,1);},
+    writeBatch:()=>{const ops=[]; return {set:(r,v)=>ops.push(['set',r,v]),update:(r,v)=>ops.push(['update',r,v]),delete:r=>ops.push(['delete',r]),commit:async()=>{for(const [op,r,v] of ops) await api[op==='set'?'setDoc':op==='update'?'updateDoc':'deleteDoc'](r,v);}};}
+  };
+  window._fs=api;
+  window._col=ref('vendas');
+  window._colGastos=ref('gastos');
+  window._addDoc=api.addDoc;
+  window._updateDoc=api.updateDoc;
+  window._doc=api.doc;
+  window._serverTimestamp=api.serverTimestamp;
+  window._signOut=()=>{};
+})();
+</script>
+  </head>
+
+  <body>
+    <!-- ══ TELA DE LOGIN ══════════════════════════════════════════ -->
+    <div id="login-screen" style="display:none">
+      <div class="login-box">
+        <div class="login-logo">
+          <div class="login-logo-icon">
+            <i class="ui-icon" data-lucide="sprout" aria-hidden="true"></i>
+          </div>
+          <div>
+            <h1>Gabriel Gatti</h1>
+            <p>Sistema de Vendas</p>
+          </div>
+        </div>
+        <p class="login-title">
+          <i class="ui-icon" data-lucide="lock-keyhole" aria-hidden="true"></i>
+          Acesso restrito — faça login para continuar
+        </p>
+
+        <div class="login-field">
+          <label>E-mail</label>
+          <input
+            type="email"
+            id="login-email"
+            placeholder="seu@email.com"
+            onkeydown="loginKeydown(event)"
+            autofocus
+          />
+        </div>
+        <div class="login-field">
+          <label>Senha</label>
+          <input
+            type="password"
+            id="login-senha"
+            placeholder="••••••••"
+            onkeydown="loginKeydown(event)"
+          />
+        </div>
+
+        <button class="login-btn" id="login-btn" onclick="fazerLogin()">
+          <i class="ui-icon" data-lucide="log-in" aria-hidden="true"></i> Entrar
+        </button>
+
+        <div class="login-error" id="login-erro"></div>
+        <div class="login-success" id="login-sucesso"></div>
+
+        <button class="btn-esqueci" onclick="esqueciSenha()">
+          Esqueci minha senha
+        </button>
+
+        <p class="login-security">
+          <i class="ui-icon" data-lucide="shield-check" aria-hidden="true"></i>
+          Modelo demonstrativo sem autenticação <br> <br>
+          <span>Desenvolvido por <a href="https://davitech.com.br" target="_blank" rel="noopener">DaviTech</a></span>
+        </p>
+      </div>
+    </div>
+
+    <!-- ══ SISTEMA (visível só após login) ═══════════════════════ -->
+    <div id="app-content" style="display:block">
+      <div id="loading" style="display:none">
+        <div class="spin"></div>
+        <p>Preparando demonstração...</p>
+      </div>
+
+      <header>
+        <div class="logo">
+          <div class="logo-menu-wrap">
+            <button
+              class="logo-icon logo-menu-trigger"
+              type="button"
+              aria-label="Abrir menu extra"
+              aria-expanded="false"
+              onclick="toggleLogoMenu()"
+            >
+              <img src="img/logo-gabriel.svg" alt="" />
+            </button>
+            <div class="logo-menu" id="logo-menu">
+              <button
+                class="tab"
+                onclick="
+                  toggleLogoMenu();
+                  mudarTab('historico', this);
+                "
+              >
+                <span class="tab-text"
+                  ><i
+                    class="ui-icon"
+                    data-lucide="clipboard-list"
+                    aria-hidden="true"
+                  ></i>
+                  Histórico</span
+                >
+                <span class="tab-label">Histórico</span>
+              </button>
+              <button
+                class="tab"
+                onclick="
+                  toggleLogoMenu();
+                  mudarTab('semana', this);
+                "
+              >
+                <span class="tab-text"
+                  ><i
+                    class="ui-icon"
+                    data-lucide="calendar-days"
+                    aria-hidden="true"
+                  ></i>
+                  Semanal</span
+                >
+                <span class="tab-label">Semanal</span>
+              </button>
+              <button
+                class="tab"
+                onclick="
+                  toggleLogoMenu();
+                  mudarTab('meta', this);
+                "
+              >
+                <span class="tab-text"
+                  ><i
+                    class="ui-icon"
+                    data-lucide="target"
+                    aria-hidden="true"
+                  ></i>
+                  Metas</span
+                >
+                <span class="tab-label">Metas</span>
+              </button>
+              <button
+                class="tab"
+                onclick="
+                  toggleLogoMenu();
+                  mudarTab('estoque', this);
+                "
+              >
+                <span class="tab-text"
+                  ><i
+                    class="ui-icon"
+                    data-lucide="warehouse"
+                    aria-hidden="true"
+                  ></i>
+                  Estoque</span
+                >
+                <span class="tab-label">Estoque</span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <h1>Gabriel Gatti</h1>
+            <p>Sistema de Vendas</p>
+          </div>
+        </div>
+        <div class="header-right">
+          <strong
+            ><span class="sync-dot"></span><span id="relogio"></span
+          ></strong>
+          CNPJ: 66.116.356/0001-01
+          <span class="user-badge" id="user-badge"></span>
+          <button class="btn-logout" type="button" aria-label="Sair da conta" title="Sair da conta" onclick="window._signOut()">
+            <i class="ui-icon" data-lucide="log-out" aria-hidden="true"></i>
+            Sair da conta
+          </button>
+        </div>
+      </header>
+
+      <nav>
+        <button
+          class="tab mobile-fixed active"
+          onclick="mudarTab('painel', this)"
+        >
+          <span class="tab-text"
+            ><i
+              class="ui-icon"
+              data-lucide="layout-dashboard"
+              aria-hidden="true"
+            ></i>
+            Painel</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="layout-dashboard"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Painel</span>
+        </button>
+        <button class="tab mobile-fixed" onclick="mudarTab('nova', this)">
+          <span class="tab-text"
+            ><i
+              class="ui-icon"
+              data-lucide="badge-dollar-sign"
+              aria-hidden="true"
+            ></i>
+            Venda</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="badge-dollar-sign"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Venda</span>
+        </button>
+        <button class="tab" onclick="mudarTab('historico', this)">
+          <span class="tab-text"
+            ><i
+              class="ui-icon"
+              data-lucide="clipboard-list"
+              aria-hidden="true"
+            ></i>
+            Histórico</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="clipboard-list"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Histórico</span>
+        </button>
+        <button class="tab" onclick="mudarTab('semana', this)">
+          <span class="tab-text"
+            ><i
+              class="ui-icon"
+              data-lucide="calendar-days"
+              aria-hidden="true"
+            ></i>
+            Semanal</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="calendar-days"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Semanal</span>
+        </button>
+        <button class="tab" onclick="mudarTab('meta', this)">
+          <span class="tab-text"
+            ><i class="ui-icon" data-lucide="target" aria-hidden="true"></i>
+            Metas</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="target"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Metas</span>
+        </button>
+        <button class="tab mobile-fixed" onclick="mudarTab('gastos', this)">
+          <span class="tab-text"
+            ><i class="ui-icon" data-lucide="wallet" aria-hidden="true"></i>
+            Gastos</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="wallet"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Gastos</span>
+        </button>
+        <button class="tab" onclick="mudarTab('estoque', this)">
+          <span class="tab-text"
+            ><i class="ui-icon" data-lucide="warehouse" aria-hidden="true"></i>
+            Estoque</span
+          >
+          <i
+            class="tab-icon ui-icon"
+            data-lucide="warehouse"
+            aria-hidden="true"
+          ></i>
+          <span class="tab-label">Estoque</span>
+        </button>
+      </nav>
+
+      <div class="content">
+        <!-- PAINEL -->
+        <div class="panel active" id="tab-painel">
+          <div class="sec-title">Painel <span>Geral</span></div>
+          <div class="cards" id="cards-painel"></div>
+          <div class="box">
+            <h2>
+              <i class="ui-icon" data-lucide="target" aria-hidden="true"></i>
+              Meta Mensal
+            </h2>
+            <div id="meta-painel"></div>
+          </div>
+          <div class="box">
+            <h2>
+              <i class="ui-icon" data-lucide="clock-3" aria-hidden="true"></i>
+              Últimas Vendas
+            </h2>
+            <div class="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Produto</th>
+                    <th>Qtd</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-recentes"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- VENDA -->
+        <div class="panel" id="tab-nova">
+          <div class="sec-title">
+            <i
+              class="ui-icon"
+              data-lucide="badge-dollar-sign"
+              aria-hidden="true"
+            ></i>
+            <span>Nova Venda</span>
+          </div>
+
+          <div class="venda-layout">
+            <!-- COLUNA ESQUERDA: Catálogo -->
+            <div class="venda-col-prod">
+              <div class="box">
+                <h2>
+                  <i
+                    class="ui-icon"
+                    data-lucide="package"
+                    aria-hidden="true"
+                  ></i>
+                  Produtos
+                </h2>
+                <p
+                  style="
+                    color: var(--cinza);
+                    font-size: 13px;
+                    margin-bottom: 14px;
+                  "
+                >
+                  Toque para adicionar ao carrinho.
+                </p>
+                <div id="grade-produtos" class="grade-produtos"></div>
+              </div>
+            </div>
+
+            <!-- COLUNA DIREITA: Carrinho + Dados -->
+            <div class="venda-col-cart">
+              <!-- Carrinho -->
+              <div class="box" id="box-carrinho">
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 12px;
+                  "
+                >
+                  <h2 style="margin: 0">
+                    <i
+                      class="ui-icon"
+                      data-lucide="shopping-cart"
+                      aria-hidden="true"
+                    ></i>
+                    Carrinho
+                  </h2>
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    onclick="limparCarrinho()"
+                  >
+                    <i
+                      class="ui-icon"
+                      data-lucide="trash-2"
+                      aria-hidden="true"
+                    ></i>
+                    Limpar
+                  </button>
+                </div>
+                <div id="lista-carrinho">
+                  <p
+                    style="
+                      color: var(--cinza);
+                      font-size: 13px;
+                      text-align: center;
+                      padding: 20px 0;
+                    "
+                  >
+                    Nenhum produto adicionado.
+                  </p>
+                </div>
+                <div
+                  id="carrinho-total"
+                  style="
+                    display: none;
+                    padding: 10px 0 0;
+                    border-top: 1px solid var(--borda);
+                    text-align: right;
+                    font-size: 16px;
+                    font-weight: 800;
+                    color: var(--neon);
+                  "
+                ></div>
+              </div>
+
+              <!-- Dados da Venda -->
+              <div class="box">
+                <h2>
+                  <i
+                    class="ui-icon"
+                    data-lucide="clipboard-list"
+                    aria-hidden="true"
+                  ></i>
+                  Dados da Venda
+                </h2>
+                <div class="fgrid">
+                  <div class="fg">
+                    <label>Cliente / Empresa</label>
+                    <input
+                      type="text"
+                      id="cliente"
+                      placeholder="Nome do cliente ou empresa"
+                    />
+                  </div>
+                  <div class="fg">
+                    <label>Telefone do Cliente (opcional)</label>
+                    <input
+                      type="tel"
+                      id="telefone"
+                      inputmode="numeric"
+                      placeholder="5565999999999"
+                    />
+                  </div>
+                  <div class="fg">
+                    <label>Forma de Pagamento</label>
+                    <select id="pagamento">
+                      <option>Dinheiro</option>
+                      <option>PIX</option>
+                      <option>Cartão</option>
+                      <option>A prazo</option>
+                    </select>
+                  </div>
+                  <div class="fg">
+                    <label>Data da Venda</label>
+                    <input type="date" id="data-venda" />
+                  </div>
+                </div>
+                <div class="fg" style="margin-bottom: 18px">
+                  <label>Observações (opcional)</label>
+                  <textarea
+                    id="obs"
+                    placeholder="Observações opcionais..."
+                  ></textarea>
+                </div>
+                <div class="btn-row">
+                  <button class="btn btn-primary" onclick="lancarVenda()">
+                    <i
+                      class="ui-icon"
+                      data-lucide="circle-plus"
+                      aria-hidden="true"
+                    ></i>
+                    Lançar Venda
+                  </button>
+                  <button class="btn btn-ghost" onclick="limparForm()">
+                    <i
+                      class="ui-icon"
+                      data-lucide="trash-2"
+                      aria-hidden="true"
+                    ></i>
+                    Limpar Tudo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HISTÓRICO -->
+        <div class="panel" id="tab-historico">
+          <div class="sec-title">
+            <i
+              class="ui-icon"
+              data-lucide="clipboard-list"
+              aria-hidden="true"
+            ></i>
+            <span>Histórico de Vendas</span>
+          </div>
+          <div class="box" style="padding: 16px 20px">
+            <div class="btn-row">
+              <button class="btn btn-info btn-sm" onclick="exportarPDF()">
+                <i
+                  class="ui-icon"
+                  data-lucide="file-text"
+                  aria-hidden="true"
+                ></i>
+                Exportar PDF
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="exportarCSV()">
+                <i
+                  class="ui-icon"
+                  data-lucide="file-spreadsheet"
+                  aria-hidden="true"
+                ></i>
+                Exportar CSV
+              </button>
+              <input
+                type="month"
+                id="filtro-mes"
+                onchange="renderHistorico()"
+                style="
+                  background: rgba(255, 255, 255, 0.07);
+                  border: 1px solid var(--borda);
+                  border-radius: 8px;
+                  padding: 7px 12px;
+                  color: var(--branco);
+                  font-family: &quot;DM Sans&quot;, sans-serif;
+                  font-size: 13px;
+                  outline: none;
+                "
+              />
+            </div>
+          </div>
+          <div class="box">
+            <div class="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Data</th>
+                    <th>Cliente</th>
+                    <th>Telefone</th>
+                    <th>Vendedor</th>
+                    <th>Produto</th>
+                    <th>Qtd</th>
+                    <th>Total</th>
+                    <th>Pgto</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-historico"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SEMANA -->
+        <div class="panel" id="tab-semana">
+          <div class="sec-title">
+            <i
+              class="ui-icon"
+              data-lucide="calendar-days"
+              aria-hidden="true"
+            ></i>
+            Monitoramento <span>Semanal</span>
+          </div>
+          <div class="cards" id="cards-semana"></div>
+          <div class="box">
+            <h2>
+              <i
+                class="ui-icon"
+                data-lucide="calendar-range"
+                aria-hidden="true"
+              ></i>
+              Vendas por Dia (Semana Atual)
+            </h2>
+            <div class="week-grid" id="week-grid"></div>
+          </div>
+          <div class="box">
+            <h2>
+              <i
+                class="ui-icon"
+                data-lucide="clipboard-list"
+                aria-hidden="true"
+              ></i>
+              Vendas desta Semana
+            </h2>
+            <div class="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Cliente</th>
+                    <th>Produto</th>
+                    <th>Qtd</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-semana"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="box">
+            <h2>
+              <i
+                class="ui-icon"
+                data-lucide="chart-no-axes-column-increasing"
+                aria-hidden="true"
+              ></i>
+              Previsão para Bater a Meta
+            </h2>
+            <div id="previsao-meta"></div>
+          </div>
+        </div>
+
+        <!-- METAS -->
+        <div class="panel" id="tab-meta">
+          <div class="sec-title">
+            <i class="ui-icon" data-lucide="target" aria-hidden="true"></i>
+            <span>Metas</span>
+          </div>
+          <div class="box">
+            <h2>Definir Meta Mensal</h2>
+            <div class="fgrid">
+              <div class="fg">
+                <label>Meta de Faturamento (R$)</label
+                ><input
+                  type="number"
+                  id="meta-valor"
+                  placeholder="Ex: 2000"
+                  oninput="salvarMeta()"
+                />
+              </div>
+              <div class="fg">
+                <label>Meta de Unidades Vendidas</label
+                ><input
+                  type="number"
+                  id="meta-unidades"
+                  placeholder="Ex: 100"
+                  oninput="salvarMeta()"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="box">
+            <h2>
+              <i
+                class="ui-icon"
+                data-lucide="chart-no-axes-column-increasing"
+                aria-hidden="true"
+              ></i>
+              Progresso do Mês
+            </h2>
+            <div id="progresso-mes"></div>
+          </div>
+          <div class="box">
+            <h2>
+              <i
+                class="ui-icon"
+                data-lucide="chart-no-axes-column-increasing"
+                aria-hidden="true"
+              ></i>
+              Quanto preciso vender para bater a meta?
+            </h2>
+            <div id="previsao-geral"></div>
+          </div>
+        </div>
+
+        <!-- GASTOS -->
+        <div class="panel" id="tab-gastos">
+          <div class="sec-title">
+            <i class="ui-icon" data-lucide="wallet" aria-hidden="true"></i>
+            <span>Gastos Variáveis</span>
+          </div>
+
+          <!-- Formulário de novo gasto -->
+          <div class="box">
+            <h2>
+              <i
+                class="ui-icon"
+                data-lucide="circle-plus"
+                aria-hidden="true"
+              ></i>
+              Registrar Gasto
+            </h2>
+            <p
+              style="color: var(--cinza); font-size: 13px; margin-bottom: 16px"
+            >
+              A data é registrada automaticamente no momento do lançamento.
+            </p>
+            <div class="fgrid">
+              <div class="fg" style="grid-column: 1/-1">
+                <label>Nome do Gasto</label>
+                <input
+                  type="text"
+                  id="gasto-nome"
+                  placeholder="Ex: Gasolina, Calcário, Esterco extra..."
+                />
+              </div>
+              <div class="fg">
+                <label>Quantidade</label>
+                <input
+                  type="number"
+                  id="gasto-qtd"
+                  value="1"
+                  min="1"
+                  step="1"
+                />
+              </div>
+              <div class="fg">
+                <label>Valor (R$)</label>
+                <input
+                  type="number"
+                  id="gasto-valor"
+                  step="0.01"
+                  min="0"
+                  placeholder="0,00"
+                />
+              </div>
+            </div>
+            <div class="btn-row" style="margin-top: 4px">
+              <button class="btn btn-primary" onclick="lancarGasto()">
+                <i class="ui-icon" data-lucide="save" aria-hidden="true"></i>
+                Registrar Gasto
+              </button>
+            </div>
+          </div>
+
+          <!-- Lista de gastos do mês -->
+          <div class="box">
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-bottom: 18px;
+              "
+            >
+              <h2 style="margin: 0">
+                <i
+                  class="ui-icon"
+                  data-lucide="clipboard-list"
+                  aria-hidden="true"
+                ></i>
+                Gastos deste Mês
+              </h2>
+              <span
+                id="gastos-total-mes"
+                style="
+                  font-size: 14px;
+                  font-weight: 700;
+                  color: var(--vermelho);
+                "
+                >Total do mês: R$ 0,00</span
+              >
+            </div>
+            <div id="lista-gastos">
+              <p
+                style="
+                  color: var(--cinza);
+                  font-size: 13px;
+                  text-align: center;
+                  padding: 30px 0;
+                "
+              >
+                Nenhum gasto registrado este mês.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTROLE DE ESTOQUE -->
+        <div class="panel" id="tab-estoque">
+          <div class="sec-title">
+            <i class="ui-icon" data-lucide="warehouse" aria-hidden="true"></i>
+            <span>Controle de Estoque</span>
+          </div>
+
+          <div class="cards" id="cards-estoque"></div>
+
+          <!-- Migração única: só aparece para admin quando não há produtos no banco -->
+          <div class="box" id="estoque-importar" style="display: none">
+            <h2>
+              <i class="ui-icon" data-lucide="package" aria-hidden="true"></i>
+              Nenhum produto no banco de dados
+            </h2>
+            <p style="color: var(--cinza); font-size: 13px; margin: 6px 0 14px">
+              Importe a lista que já existia neste aparelho (ou a lista padrão)
+              para o Firestore. Depois disso tudo passa a ser salvo no banco.
+            </p>
+            <button class="btn btn-primary" onclick="importarProdutosIniciais()">
+              <i class="ui-icon" data-lucide="save" aria-hidden="true"></i>
+              Importar produtos para o banco
+            </button>
+          </div>
+
+          <div class="box">
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-bottom: 18px;
+              "
+            >
+              <div>
+                <h2 style="margin: 0">
+                  <i class="ui-icon" data-lucide="package" aria-hidden="true"></i>
+                  Produtos e Saldo
+                </h2>
+                <p style="color: var(--cinza); font-size: 13px; margin-top: 4px">
+                  Vendas baixam o estoque automaticamente; cancelamentos devolvem.
+                </p>
+              </div>
+              <button class="btn btn-primary" id="btn-novo-produto" onclick="abrirFormProduto()">
+                <i class="ui-icon" data-lucide="plus" aria-hidden="true"></i>
+                Novo Produto
+              </button>
+            </div>
+            <div id="lista-estoque" class="lista-predefinidos"></div>
+          </div>
+
+          <div class="box">
+            <h2>
+              <i class="ui-icon" data-lucide="clipboard-list" aria-hidden="true"></i>
+              Últimas Movimentações
+            </h2>
+            <div id="lista-movs" class="lista-predefinidos" style="margin-top: 12px"></div>
+          </div>
+        </div>
+      </div>
+      <!-- /content -->
+
+      <!-- MODAL PRODUTO -->
+      <div class="modal-bg" id="modal-produto-bg">
+        <div class="modal" style="max-width: 460px">
+          <h3 id="modal-produto-titulo">
+            <i class="ui-icon" data-lucide="package" aria-hidden="true"></i>
+            Novo Produto
+          </h3>
+          <div class="fgrid" style="margin-top: 14px">
+            <div class="fg" style="grid-column: 1/-1">
+              <label>Nome do Produto</label>
+              <input type="text" id="prod-nome" placeholder="Ex: 1kg Turbinado Direto" />
+            </div>
+            <div class="fg">
+              <label>Ícone</label>
+              <select id="prod-icon">
+                <option value="citrus">Frutífero</option>
+                <option value="gem">Premium</option>
+                <option value="apple">Árvore Frutífera</option>
+                <option value="flower-2">Floridas</option>
+                <option value="leafy-green">Ervas</option>
+                <option value="tree-deciduous">Árvores não Frutíferas</option>
+                <option value="package">Produto</option>
+                <option value="sprout">Muda</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label>Preço de Venda (R$)</label>
+              <input type="number" id="prod-preco" step="0.01" min="0" placeholder="0,00" />
+            </div>
+            <div class="fg" id="fg-prod-estoque">
+              <label>Estoque inicial (un.)</label>
+              <input type="number" id="prod-estoque" step="1" min="0" placeholder="0" />
+            </div>
+            <div class="fg">
+              <label>Estoque mínimo (aviso)</label>
+              <input type="number" id="prod-minimo" step="1" min="0" placeholder="0" />
+            </div>
+            <div class="fg">
+              <label>Vende pelo WhatsApp?</label>
+              <select id="prod-whatsapp" onchange="alternarCamposWhatsApp()">
+                <option value="nao">Não</option>
+                <option value="sim">Sim (bot Sendfy)</option>
+              </select>
+            </div>
+            <div class="fg" id="fg-prod-linha" style="display: none">
+              <label>Linha</label>
+              <select id="prod-linha">
+                <option value="turbinado">Turbinado</option>
+                <option value="frutifera">Frutífera</option>
+              </select>
+            </div>
+            <div class="fg" id="fg-prod-tamanho" style="display: none">
+              <label>Tamanho (kg)</label>
+              <input type="number" id="prod-tamanho" step="1" min="1" placeholder="Ex: 4" />
+            </div>
+          </div>
+          <input type="hidden" id="prod-edit-id" />
+          <div class="btn-row" style="margin-top: 18px">
+            <button class="btn btn-primary" id="btn-salvar-produto" onclick="salvarProduto()">
+              <i class="ui-icon" data-lucide="save" aria-hidden="true"></i>
+              Salvar
+            </button>
+            <button class="btn btn-ghost" onclick="fecharFormProduto()">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL MOVIMENTAÇÃO DE ESTOQUE -->
+      <div class="modal-bg" id="modal-mov-bg">
+        <div class="modal" style="max-width: 420px">
+          <h3 id="modal-mov-titulo">
+            <i class="ui-icon" data-lucide="warehouse" aria-hidden="true"></i>
+            Movimentar estoque
+          </h3>
+          <p id="mov-produto-info" style="color: var(--cinza); font-size: 13px; margin-top: 6px"></p>
+          <div class="fgrid" style="margin-top: 14px">
+            <div class="fg" style="grid-column: 1/-1">
+              <label>Tipo</label>
+              <select id="mov-tipo" onchange="atualizarRotuloMov()">
+                <option value="entrada">Entrada (produção / compra)</option>
+                <option value="saida">Saída (perda / uso interno)</option>
+                <option value="ajuste">Ajuste (contagem: definir saldo)</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label id="mov-qtd-label">Quantidade</label>
+              <input type="number" id="mov-qtd" step="1" min="0" placeholder="0" />
+            </div>
+            <div class="fg">
+              <label>Motivo / observação</label>
+              <input type="text" id="mov-motivo" maxlength="120" placeholder="Ex: lote novo" />
+            </div>
+          </div>
+          <input type="hidden" id="mov-prod-id" />
+          <div class="btn-row" style="margin-top: 18px">
+            <button class="btn btn-primary" id="btn-salvar-mov" onclick="salvarMovimentacao()">
+              <i class="ui-icon" data-lucide="save" aria-hidden="true"></i>
+              Registrar
+            </button>
+            <button class="btn btn-ghost" onclick="fecharMov()">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL CONFIRMAÇÃO -->
+      <div class="modal-bg" id="modal-bg">
+        <div class="modal">
+          <h3>
+            <i class="ui-icon" data-lucide="badge-check" aria-hidden="true"></i>
+            Confirmar Venda
+          </h3>
+          <p>
+            Verifique os dados. Após confirmar, você e Gabriel serão
+            notificados.
+          </p>
+          <div class="modal-detail" id="modal-detail"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="confirmarVenda()">
+              <i
+                class="ui-icon"
+                data-lucide="circle-check"
+                aria-hidden="true"
+              ></i>
+              Confirmar
+            </button>
+            <button class="btn btn-danger" onclick="fecharModal()">
+              <i class="ui-icon" data-lucide="circle-x" aria-hidden="true"></i>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL NOTA FISCAL -->
+      <div class="modal-bg" id="modal-nf-bg">
+        <div
+          class="modal"
+          style="max-width: 580px; padding: 0; overflow: hidden"
+        >
+          <!-- Cabeçalho do modal -->
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              padding: 18px 24px;
+              border-bottom: 1px solid var(--borda);
+            "
+          >
+            <h3 style="margin: 0">
+              <i
+                class="ui-icon"
+                data-lucide="receipt-text"
+                aria-hidden="true"
+              ></i>
+              Nota Fiscal
+            </h3>
+            <div class="btn-row" style="margin: 0; gap: 8px">
+              <button class="btn btn-info btn-sm" onclick="imprimirNF()">
+                <i class="ui-icon" data-lucide="printer" aria-hidden="true"></i>
+                Imprimir
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="gerarPDFNF()">
+                <i
+                  class="ui-icon"
+                  data-lucide="file-text"
+                  aria-hidden="true"
+                ></i>
+                PDF
+              </button>
+              <button
+                class="btn btn-ghost btn-sm"
+                onclick="fecharNF()"
+                aria-label="Fechar"
+              >
+                <i class="ui-icon" data-lucide="x" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          <!-- Corpo da nota (área imprimível) -->
+          <div
+            id="nf-corpo"
+            style="padding: 24px; overflow-y: auto; max-height: 75vh"
+          >
+            <!-- preenchido por renderNF() -->
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL EDITAR -->
+      <div class="modal-bg" id="modal-edit-bg">
+        <div class="modal" style="max-width: 520px">
+          <h3>
+            <i class="ui-icon" data-lucide="pencil" aria-hidden="true"></i>
+            Editar Venda
+          </h3>
+          <div class="fgrid" style="margin-top: 14px">
+            <div class="fg">
+              <label>Quantidade</label
+              ><input type="number" id="edit-qtd" min="1" />
+            </div>
+            <div class="fg">
+              <label>Valor Unitário (R$)</label
+              ><input type="number" id="edit-valor" step="0.01" />
+            </div>
+            <div class="fg">
+              <label>Cliente</label><input type="text" id="edit-cliente" />
+            </div>
+            <div class="fg">
+              <label>Telefone</label><input type="tel" id="edit-telefone" inputmode="numeric" placeholder="5565999999999" />
+            </div>
+            <div class="fg">
+              <label>Pagamento</label>
+              <select id="edit-pgto">
+                <option>Dinheiro</option>
+                <option>PIX</option>
+                <option>Cartão</option>
+                <option>A prazo</option>
+              </select>
+            </div>
+          </div>
+          <div class="fg" style="margin-bottom: 16px">
+            <label>Observações</label><textarea id="edit-obs"></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="salvarEdicao()">
+              <i class="ui-icon" data-lucide="save" aria-hidden="true"></i>
+              Salvar
+            </button>
+            <button class="btn btn-ghost" onclick="fecharEdit()">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+
+      <script src="js/script.js"></script>
+      <script>
+        // PWA: registra o service worker (só em http/https, não dentro do app Capacitor)
+        if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW não registrado:', e));
+          });
+        }
+      </script>
+    </div>
+    <!-- /app-content -->
+  </body>
+</html>

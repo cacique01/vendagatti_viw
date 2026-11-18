@@ -1,0 +1,10 @@
+SISTEMA DE VENDAS — MODELO DEMONSTRATIVO
+
+- Não utiliza Firebase, Firestore, autenticação ou banco de dados.
+- Abre diretamente no painel, sem tela de login.
+- Os registros são fictícios e servem apenas para apresentação/testes.
+- Alterações feitas durante a sessão ficam somente na memória do navegador.
+- Ao atualizar ou fechar a página, os dados retornam ao conjunto demonstrativo inicial.
+- Para executar: abra index.html em um navegador moderno. Para recursos PWA, utilize hospedagem estática HTTPS.
+
+Este pacote é um protótipo visual/funcional, não deve ser usado para registrar vendas reais.
